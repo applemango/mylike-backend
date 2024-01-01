@@ -8,6 +8,10 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
+import { Worker, WorkerRoute } from "@applemango/worker";
+import { Database } from "@applemango/dsql"
+import { Database as DatabaseCore } from "bun:sqlite";
+
 export interface Env {
 	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
 	// MY_KV_NAMESPACE: KVNamespace;
@@ -26,7 +30,23 @@ export interface Env {
 }
 
 export default {
-	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		return new Response('Hello World!');
+	async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		const db = Database({}, {
+			execute: async (query, args)=> {
+				const database = new DatabaseCore("db.sqlite");
+				const statement = database.prepare(query)
+				return await statement.all(args)
+			}
+		})
+		const api = Worker({req, ctx, env, db, json: (obj: any)=> undefined as any})
+		api.appendContext({
+			json: async (obj: any)=> {
+				return new Response(JSON.stringify(await api.getBody()))
+			}
+		})
+		await api.post("/", async ({api})=> {
+			return await api.json({})
+		})
+		return api.final();
 	},
 };
