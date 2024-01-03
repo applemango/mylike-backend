@@ -9,7 +9,7 @@
  */
 
 import { Worker, WorkerRoute } from "@applemango/worker";
-import { Database } from "@applemango/dsql"
+import { Database, Table, id, text } from "@applemango/dsql"
 import { Database as DatabaseCore } from "bun:sqlite";
 
 export interface Env {
@@ -29,9 +29,48 @@ export interface Env {
 	// MY_QUEUE: Queue;
 }
 
+const user = Table({
+	id: id(),
+	email: text(),
+	password: text(),
+	username: text(),
+	bio: text(),
+	icon_image: text(),
+	profile_image: text(),
+	created_at: text(),
+	updated_at: text(),
+})
+
+const product = Table({
+	id: id(),
+	title: text(),
+	description: text(),
+	create_at: text(),
+	icon_image: text(),
+})
+
+const article = Table({
+	id: id(),
+	user_id: user.id,
+	product_id: product.id,
+	title: text(),
+	description: text(),
+	body: text(),
+	created_at: text(),
+	updated_at: text(),
+})
+
+const comment = Table({
+	id: id(),
+	article_id: article.id,
+	body: text(),
+})
+
 export default {
 	async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		const db = Database({}, {
+		const db = Database({
+			user, product, article, comment
+		}, {
 			execute: async (query, args)=> {
 				const database = new DatabaseCore("db.sqlite");
 				const statement = database.prepare(query)
@@ -41,7 +80,7 @@ export default {
 		const api = Worker({req, ctx, env, db, json: (obj: any)=> undefined as any})
 		api.appendContext({
 			json: async (obj: any)=> {
-				return new Response(JSON.stringify(await api.getBody()))
+				return new Response(JSON.stringify(obj))
 			}
 		})
 		await api.post("/", async ({api})=> {
