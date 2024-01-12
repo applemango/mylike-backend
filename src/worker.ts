@@ -41,9 +41,14 @@ const user = Table({
 	updated_at: text(),
 })
 
+type Product = {
+	id: number,
+	name: string,
+	description: string,
+}
 const product = Table({
 	id: id(),
-	title: text(),
+	name: text(),
 	description: text(),
 	create_at: text(),
 	icon_image: text(),
@@ -66,6 +71,7 @@ const comment = Table({
 	body: text(),
 })
 
+
 export default {
 	async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
 		const db = Database({
@@ -74,18 +80,70 @@ export default {
 			execute: async (query, args)=> {
 				const database = new DatabaseCore("db.sqlite");
 				const statement = database.prepare(query)
-				return await statement.all(args)
+				return await statement.all(args || [])
 			}
 		})
-		const api = Worker({req, ctx, env, db, json: (obj: any)=> undefined as any})
+		const api = Worker<{
+			json: (obj: {[key: string]: any}) => Response,
+			env: Env,
+			db: typeof db,
+			//id: string
+		}>({req, ctx, env, db})
 		api.appendContext({
-			json: async (obj: any)=> {
-				return new Response(JSON.stringify(obj))
+			json: (obj: any)=> {
+				const response = new Response(JSON.stringify(obj))
+				response.headers.set("Content-Type", "application/json")
+				return response
+			},
+			//id: crypto.randomUUID().replaceAll("-", "").slice(0, 12)
+		})
+
+		await api.any("/**", async ({api})=> {
+			console.log(`Request: ${api.req.method} ${api.req.url}`)
+			if (api.req.method === "OPTIONS")
+				return new Response("OK")
+			await api.getBody()
+		})
+
+		await api.post<{email: string, password: string, username: string, bio: string }>("/user", async ({api, body})=> {
+			await db.user.insert({
+				email: body.email,
+				password: body.password,
+				username: body.username
+			})
+			return api.json({msg: "success"})
+		})
+		await api.post<{name: string, description: string}>("/product", async ({api, body})=> {
+			const product: Array<Product | null> = await db.execute("SELECT * FROM product WHERE name = ?", [body.name])
+			if(product[0]) {
+				return api.json({msg: "success"})
 			}
+			await db.product.insert({
+				name: body.name,
+				description: body.description
+			})
+			return api.json({msg: "success"})
 		})
-		await api.post("/", async ({api})=> {
-			return await api.json({})
+		await api.post<{title: string, description: string, body: string}>("/article", async ({api, body})=>{
+			await db.article.insert({
+				title: body.title,
+				description: body.description,
+				body: body.body,
+				user_id: 1
+			})
+			return api.json({msg: "success"})
 		})
+		await api.get("/article", async ({api})=>{
+			const articles = await db.execute("SELECT article.*, user.* FROM article INNER JOIN user ON article.user_id = user.id")
+			//const articles = await db.article.all()
+			return api.json({msg: "success", articles})
+		})
+		await api.get<{id: string}>("/article/:id", async ({api, args})=>{
+			const article = await db.article.get(args.id)
+			return api.json({msg: "success", article})
+		})
+		await api.post<{}>("/comment", async ({api, body})=>{})
+
 		return api.final();
 	},
 };
