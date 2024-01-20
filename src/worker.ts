@@ -142,7 +142,21 @@ export default {
 			const article = await db.article.get(args.id)
 			return api.json({msg: "success", article})
 		})
-		await api.post<{}>("/comment", async ({api, body})=>{})
+		await api.post<{title: string, description: string, body: string}, {id: string}>("/article/:id", async ({api, args, body})=>{
+			const article = await db.execute("UPDATE article SET title = ?, description = ?, body = ? WHERE id = ?", [body.title, body.description, body.body, args.id])
+			return api.json({msg: "success"})
+		})
+		await api.post<{body: string}, {id: string}>("/article/:id/comment", async ({api, body, args})=>{
+			await db.comment.insert({
+				article_id: Number(args.id),
+				body: body.body
+			})
+			return api.json({msg: "success"})
+		})
+		await api.get<{id: string}>("/article/:id/comment", async ({api, args})=> {
+			const comments = await db.execute("SELECT * FROM comments WHERE article_id = ?", [Number(args.id)])
+			return api.json({msg: "success", comments})
+		})
 
 		return api.final();
 	},
